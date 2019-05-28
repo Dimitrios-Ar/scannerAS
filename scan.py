@@ -8,7 +8,6 @@ import numpy as np
 import argparse
 import cv2
 import imutils
-import sys
 
 # construct the argument parser and parse the arguments
 ap = argparse.ArgumentParser()
@@ -20,6 +19,7 @@ args = vars(ap.parse_args())
 # to the new height, clone it, and resize it
 image = cv2.imread(args["image"])
 ratio = image.shape[0] / 500.0
+print("ratio:", ratio)
 orig = image.copy()
 image = imutils.resize(image, height = 500)
 
@@ -38,42 +38,23 @@ cv2.destroyAllWindows()
 
 # find the contours in the edged image, keeping only the
 # largest ones, and initialize the screen contour
-cnts = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+print(cnts[2])
 cnts = imutils.grab_contours(cnts)
 cnts = sorted(cnts, key = cv2.contourArea, reverse = True)[:5]
-#print(cnts)
+
 # loop over the contours
 for c in cnts:
-	# compute the center of the contour
-	M = cv2.moments(c)
-	cX = int(M["m10"] / M["m00"])
-	cY = int(M["m01"] / M["m00"])
+	# approximate the contour
+	peri = cv2.arcLength(c, True)
+	approx = cv2.approxPolyDP(c, 0.02 * peri, True)
 
-
-	# draw the contour and center of the shape on the image
-	cv2.drawContours(image, [c], -1, (0, 255, 0), 2)
-	cv2.circle(image, (cX, cY), 7, (255, 255, 255), -1)
-	cv2.putText(image, "center", (cX - 20, cY - 20),
-	cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-
-	# show the image
-	cv2.imshow("Image", image)
-	cv2.waitKey(0)
-
-	if (100 < cX < 300) and (100 < cY < 300):
-		print("This is the one", c)
-		# approximate the contour
-		peri = cv2.arcLength(c, True)
-		approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-		print(len(approx))
-		print("WHAAA")
-
-		# if our approximated contour has four points, then we
-		# can assume that we have found our screen
-		#if len(approx) == 4:
+	# if our approximated contour has four points, then we
+	# can assume that we have found our screen
+	if len(approx) == 4:
 		screenCnt = approx
-			#print(c)
 		break
+
 # show the contour (outline) of the piece of paper
 print("STEP 2: Find contours of paper")
 cv2.drawContours(image, [screenCnt], -1, (0, 255, 0), 2)
@@ -96,5 +77,3 @@ print("STEP 3: Apply perspective transform")
 cv2.imshow("Original", imutils.resize(orig, height = 650))
 cv2.imshow("Scanned", imutils.resize(warped, height = 650))
 cv2.waitKey(0)
-
-sys.exit()
