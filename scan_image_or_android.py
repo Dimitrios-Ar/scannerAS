@@ -4,13 +4,11 @@
 # **to use already saved image and see the steps**
 # python scan_image_or_android.py image steps
 
-
 # **to use android phone camera**
 # python scan_image_or_android.py camera
+# **to use android phone camera and see the steps**
 # python scan_image_or_android.py camera steps
 
-
-# import the necessary packages
 from pyimagesearch.transform import four_point_transform
 from skimage.filters import threshold_local
 import numpy as np
@@ -21,11 +19,12 @@ import requests
 
 stop = False
 imageDone = False
-type = str(sys.argv[1])
-counter = 0
+imageType = str(sys.argv[1])
+imageNaming = 0
 showSteps = False
 correctArgument = False
 
+#Checking if the steps will be shown or not
 while correctArgument == False:
     if len(sys.argv) == 3:
         if sys.argv[2] == "steps":
@@ -43,7 +42,7 @@ while correctArgument == False:
         correctArgument = True
 
 while stop == False:
-    if type == "camera":
+    if imageType == "camera": #Usage for android phone
         url = "http://192.168.43.1:8080/shot.jpg"#URL FOR HOTSPOT
         #url = "http://192.168.1.5:8080//shot.jpg"#URL FOR WIFI
         while imageDone == False:
@@ -62,7 +61,7 @@ while stop == False:
                 break
             elif k%256 == 113: #if "q" then program stops
                 sys.exit()
-    elif type == "image":
+    elif imageType == "image": #usage for image
         askForImage = str(input('Please select image or type "q" to quit:'))
         if askForImage == "q":
             sys.exit()
@@ -75,35 +74,28 @@ while stop == False:
                 imageDone = False
                 print('The image does not exist. Aborting..')
 
+    #After finding if an image of the android cameram will be used then we continue
     if imageDone == True:
         ratio = image.shape[0] / 500
         orig = image.copy()
         image = imutils.resize(image, height = 500)
-
         # convert the image to grayscale, blur it, and find edges in the image
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (5, 5), 0)
         edged = cv2.Canny(gray, 75, 200)
-
-
         # show the original image and the edge detected image
         if showSteps == True:
             print("STEP 1: Edge Detection")
-            cv2.imshow("Image", image)
-            cv2.imshow("Edged", edged)
+            cv2.imshow("Original Image", image)
+            cv2.imshow("Edged Image", edged)
             cv2.imwrite('Edged.png',edged)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
-
-        # find the contours in the edged image, keeping only the
-        # largest ones, and initialize the screen contour
-        cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cnts = imutils.grab_contours(cnts)
-        cnts = sorted(cnts, key = cv2.contourArea, reverse = True)[:5]
-        #print(cnts)
+        # find the contours in the edged image
+        _, cnts, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) #By RETR_EXTERNAL we keep only the outer contours.
         # loop over the contours
         for c in cnts:
-            counter +=1
+            imageNaming +=1
             temp_image = image.copy()
             ## compute the center of the contour
             M = cv2.moments(c)
@@ -111,46 +103,37 @@ while stop == False:
             cY = int(M["m01"] / M["m00"])
             # draw the contour and center of the shape on the image
             cv2.drawContours(temp_image, [c], -1, (0, 0, 255), 2)
+            cv2.imwrite('Contours.png',temp_image)
             cv2.circle(temp_image, (cX, cY), 3, (0, 0, 0), -1)
-            cv2.putText(temp_image, "Document "+ str(counter), (cX - 20, cY - 20),
+            cv2.putText(temp_image, "Document "+ str(imageNaming), (cX - 20, cY - 20),
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-            # approximate the contour
-            peri = 0.02 * cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c,peri, True)
-            print(len(approx))
-            # 	# if our approximated contour has four points, then we
-            # 	# can assume that we have found our screen
+            # approximate the contour and set epsilon(ε)
+            epsilon = 0.02 * cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c,epsilon, True)
+
+            # if the approximated contour has four points, then we assume it's a document
             if len(approx) == 4:
-                screenCnt = approx
-                #print(c)
-                # show the contour (outline) of the piece of paper
+                # draw the corners of the document
+                cv2.drawContours(temp_image, approx, -1, (0, 255, 0), 5)
+                cv2.imwrite('Outline.png',temp_image)
                 if showSteps == True:
                     print("STEP 2: Find contours of paper")
-                    cv2.drawContours(temp_image, screenCnt, -1, (0, 255, 0), 2)
-                    cv2.imshow("Outline", temp_image)
-                    cv2.imwrite('Outline.png',temp_image)
+                    cv2.imshow("Image With Contour and Corners", temp_image)
                     cv2.waitKey(0)
                     cv2.destroyAllWindows()
-
-
-                # apply the four point transform to obtain a top-down
-                # view of the original image
-                warped = four_point_transform(orig, screenCnt.reshape(4, 2) * ratio)
-                #print('warped1', warped)
-                # convert the warped image to grayscale, then threshold it
-                # to give it that 'black and white' paper effect
-                warped = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
-                T = threshold_local(warped, 19, offset = 10, method = "gaussian")
-                warped = (warped > T).astype("uint8") * 255
-
+                # apply the four point transform to obtain a top-down view of the original image
+                transformedImage = four_point_transform(orig, approx.reshape(4, 2) * ratio)
+                # convert the warped image to grayscale, then threshold it to give it that 'black and white' paper effect
+                grayTransformedImage = cv2.cvtColor(transformedImage, cv2.COLOR_BGR2GRAY)
+                T = threshold_local(grayTransformedImage, 19, offset = 10, method = "gaussian")
+                scannedImage = (grayTransformedImage > T).astype("uint8") * 255
 
                 # show the original and scanned images
                 if showSteps == True:
-                    print("STEP 3: Apply perspective transform")
-                    cv2.imshow("Original", imutils.resize(orig, height = 650))
-                    cv2.imshow("Scanned1", imutils.resize(warped, height = 650))
+                    print("STEP 3: Applying transform")
+                    cv2.imshow("Transformed Image", imutils.resize(transformedImage, height = 500))
+                    cv2.imshow("Scanned Image", imutils.resize(scannedImage, height = 500))
                     cv2.waitKey(0)
                     cv2.destroyAllWindows()
-                cv2.imwrite('scanned'+str(counter)+'.png', warped)
-    imageDone = False
-
+                cv2.imwrite('scanned'+str(imageNaming)+'.png', scannedImage)
+    imageDone = False #recheck for new image
