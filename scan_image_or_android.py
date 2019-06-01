@@ -79,56 +79,66 @@ while stop == False:
         ratio = image.shape[0] / 500
         orig = image.copy()
         image = imutils.resize(image, height = 500)
+
+        #STEP 1: Edge Detection
         # convert the image to grayscale, blur it, and find edges in the image
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-        edged = cv2.Canny(gray, 75, 200)
-        # show the original image and the edge detected image
+        gray_blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edged = cv2.Canny(gray_blurred, 75, 200)
+
         if showSteps == True:
+            # show the original image and the edge detected image
             print("STEP 1: Edge Detection")
             cv2.imshow("Original Image", image)
             cv2.imshow("Edged Image", edged)
-            cv2.imwrite('Edged.png',edged)
+            cv2.imwrite('edged.png',edged)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
-        # find the contours in the edged image
+
+        #STEP 2: Corner detection
+        # find the contours using the edged image
         _, cnts, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) #By RETR_EXTERNAL we keep only the outer contours.
-        # loop over the contours
+        cnts = sorted(cnts, key = cv2.contourArea, reverse = True)[:5]
+        temp_image = image.copy()
+        # for every contour (object)
         for c in cnts:
             imageNaming +=1
-            temp_image = image.copy()
             ## compute the center of the contour
             M = cv2.moments(c)
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
             # draw the contour and center of the shape on the image
             cv2.drawContours(temp_image, [c], -1, (0, 0, 255), 2)
-            cv2.imwrite('Contours.png',temp_image)
-            cv2.circle(temp_image, (cX, cY), 3, (0, 0, 0), -1)
-            cv2.putText(temp_image, "Document "+ str(imageNaming), (cX - 20, cY - 20),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-            # approximate the contour and set epsilon(ε)
+            # set epsilon(ε) and approximate the contour using Ramer-Douglas-Peucker algorithm
             epsilon = 0.02 * cv2.arcLength(c, True)
             approx = cv2.approxPolyDP(c,epsilon, True)
 
             # if the approximated contour has four points, then we assume it's a document
             if len(approx) == 4:
+                print('Number of points: ', len(c))
                 # draw the corners of the document
                 cv2.drawContours(temp_image, approx, -1, (0, 255, 0), 5)
-                cv2.imwrite('Outline.png',temp_image)
                 if showSteps == True:
+                    #(a) show all the contours (objects) with red outline and (b) define those that are documents
                     print("STEP 2: Find contours of paper")
+                    cv2.circle(temp_image, (cX, cY), 3, (0, 0, 0), -1)
+                    cv2.putText(temp_image, "Document "+ str(imageNaming), (cX - 20, cY - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
                     cv2.imshow("Image With Contour and Corners", temp_image)
+                    cv2.imwrite('Contour.png',temp_image)
                     cv2.waitKey(0)
                     cv2.destroyAllWindows()
-                # apply the four point transform to obtain a top-down view of the original image
+                #STEP 3: Applying transform to obtain a top-down view of the original image
                 transformedImage = four_point_transform(orig, approx.reshape(4, 2) * ratio)
-                # convert the warped image to grayscale, then threshold it to give it that 'black and white' paper effect
+                cv2.imwrite('transformed.png',transformedImage)
+                # convert the transformed image to grayscale, then perform adaptive threshold
                 grayTransformedImage = cv2.cvtColor(transformedImage, cv2.COLOR_BGR2GRAY)
-                T = threshold_local(grayTransformedImage, 19, offset = 10, method = "gaussian")
+                cv2.imwrite('grayTransformed.png',grayTransformedImage)
+                T = threshold_local(grayTransformedImage, 11, offset = 10, method = "gaussian")
+                cv2.imwrite('threshold.png',T)
                 scannedImage = (grayTransformedImage > T).astype("uint8") * 255
 
-                # show the original and scanned images
+                # show the transformed and scanned images
                 if showSteps == True:
                     print("STEP 3: Applying transform")
                     cv2.imshow("Transformed Image", imutils.resize(transformedImage, height = 500))
@@ -136,4 +146,5 @@ while stop == False:
                     cv2.waitKey(0)
                     cv2.destroyAllWindows()
                 cv2.imwrite('scanned'+str(imageNaming)+'.png', scannedImage)
+
     imageDone = False #recheck for new image
